@@ -1,16 +1,17 @@
-use ::config::{
-    ext::{
-        CommandLineConfigurationBuilderExtensions, ConfigurationBinder,
-        EnvironmentVariablesExtensions, FileSourceBuilderExtensions, JsonConfigurationExtensions
-    },
-    ConfigurationBuilder, DefaultConfigurationBuilder,
-};
+use crate::data::MemeMeta;
+use crate::task::{post_greeting, post_meme};
+use ::config::ext::{CommandLineConfigurationBuilderExtensions, ConfigurationBinder, EnvironmentVariablesExtensions, FileSourceBuilderExtensions, JsonConfigurationExtensions};
 use config::XBotConfig;
+use ::config::{ConfigurationBuilder, DefaultConfigurationBuilder};
 use lazy_static::lazy_static;
 use log::info;
+use rcron::{Job, JobScheduler};
 use tweety_rs::TweetyClient;
 
 mod config;
+mod data;
+mod post;
+mod task;
 
 lazy_static! {
     static ref XBOT_CONFIG: XBotConfig = {
@@ -41,7 +42,7 @@ async fn main() {
     //     .get_user_me(None)
     //     .await
     //     .expect("Cannot get self");
-
+    //
     // info!(
     //     "Logged in as {}",
     //     me.get("data")
@@ -52,5 +53,22 @@ async fn main() {
     //         .unwrap()
     // );
 
-    info!("111");
+    info!("Creating tasks");
+
+    let mut sched = JobScheduler::new();
+    //                  sec   min   hour           day of month   month   day of week   year
+    sched.add(Job::new("0     0     *              *              *       *             *".parse().unwrap(), || {
+        info!("Posting meme");
+        tokio::spawn(task::post_meme());
+    }));
+
+    sched.add(Job::new("0     30    7,12,15,18,22  *              *       *             *".parse().unwrap(), || {
+        info!("Posting greeting");
+        tokio::spawn(task::post_greeting());
+    }));
+
+    loop {
+        sched.tick();
+        tokio::time::sleep(sched.time_till_next_job()).await;
+    }
 }
